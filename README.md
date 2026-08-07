@@ -18,6 +18,21 @@ host application or on `PATH`. The executable contains the engine and its
 standard data; no system eSpeak package is needed. The archive also carries
 the GPL license and source/provenance notices required for redistribution.
 
+The repository also provides checksum-verifying per-user installation:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.sh | sh -s -- --uninstall
+```
+
+```powershell
+irm https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.ps1 | iex
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.ps1))) -Uninstall
+```
+
+Add `--purge` or `-Purge` only when uninstalling to irreversibly remove the
+provider's reconstructible cache.
+
 ## Build
 
 Rust 1.88+, CMake, and a C/C++ compiler are required to build from source.

@@ -23,6 +23,19 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
+      - name: Check Unix installer syntax
+        if: runner.os != 'Windows'
+        run: sh -n install.sh
+      - name: Check Windows installer syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path install.ps1), [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -ne 0) { throw ($errors -join [Environment]::NewLine) }
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: clippy, rustfmt
