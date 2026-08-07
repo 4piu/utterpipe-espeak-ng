@@ -3,11 +3,11 @@
 - Status: implemented
 - Provider slug: `espeak-ng`
 - Executable: `utterpipe-espeak-ng`
-- Provider version: `0.2.0`
-- UtterPipe protocol major: `2`
+- Provider version: `0.1.0`
+- UtterPipe protocol major: `1`
 
 This document is normative for this provider. It supplements the host-neutral
-[UtterPipe v2 specification](https://github.com/4piu/utterpipe/blob/main/docs/SPEC.md).
+[UtterPipe v1 specification](https://github.com/4piu/utterpipe/blob/main/docs/SPEC.md).
 
 ## 1. Purpose and engine
 

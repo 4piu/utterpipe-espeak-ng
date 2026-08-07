@@ -79,7 +79,7 @@ async fn run() -> Result<(), String> {
             println!("slug: {PROVIDER_SLUG}");
             println!("vendor: {PROVIDER_VENDOR}");
             println!("version: {PROVIDER_VERSION}");
-            println!("protocol: utterpipe.tts v2");
+            println!("protocol: utterpipe.tts v1");
             println!("model: {MODEL_ID}");
             println!("engine: bundled eSpeak NG 1.53.0 (359f5f3)");
             println!("delivery: complete PCM16 WAV");

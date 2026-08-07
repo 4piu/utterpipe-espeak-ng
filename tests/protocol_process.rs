@@ -61,11 +61,11 @@ impl ProviderProcess {
             "protocol.hello",
             json!({
                 "protocol": "utterpipe.tts",
-                "versions": [2],
+                "versions": [1],
                 "expected_provider": "espeak-ng",
                 "session": session,
                 "utterance_schema_profiles": ["utterpipe.utterance-options/1"],
-                "host": {"name": "integration-test", "version": "0.2.0"}
+                "host": {"name": "integration-test", "version": "0.1.0"}
             }),
         );
         self.response()

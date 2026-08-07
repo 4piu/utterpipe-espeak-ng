@@ -568,10 +568,10 @@ fn handle_hello(params: &Map<String, Value>) -> Result<(SessionMode, Value), Wir
             "protocol versions contain an out-of-range integer",
         ));
     }
-    if hello.protocol != "utterpipe.tts" || !hello.versions.contains(&2) {
+    if hello.protocol != "utterpipe.tts" || !hello.versions.contains(&1) {
         return Err(WireError::new(
             "unsupported_protocol",
-            "the host did not offer utterpipe.tts protocol major 2",
+            "the host did not offer utterpipe.tts protocol major 1",
         ));
     }
     if hello.expected_provider != PROVIDER_SLUG {
@@ -600,7 +600,7 @@ fn handle_hello(params: &Map<String, Value>) -> Result<(SessionMode, Value), Wir
         hello.session,
         json!({
             "protocol": "utterpipe.tts",
-            "version": 2,
+            "version": 1,
             "framing": "UTP1",
             "provider": {
                 "slug": PROVIDER_SLUG,
@@ -1057,11 +1057,11 @@ mod tests {
     fn hello_requires_protocol_and_returns_exact_identity() {
         let params = json!({
             "protocol": "utterpipe.tts",
-            "versions": [2],
+            "versions": [1],
             "expected_provider": PROVIDER_SLUG,
             "session": "inspect",
             "utterance_schema_profiles": [UTTERANCE_SCHEMA_PROFILE],
-            "host": {"name": "test", "version": "0.2.0"}
+            "host": {"name": "test", "version": "0.1.0"}
         });
         let (session, result) = handle_hello(params.as_object().unwrap()).unwrap();
         assert_eq!(session, SessionMode::Inspect);
