@@ -110,7 +110,7 @@ arguments or temporary files.
 - Delivery: complete `audio/wav;codec=pcm_s16le`; no fake incremental mode.
 - Storage: `data_dir` is unused; only the reconstructible cache is written.
 
-See [SPEC.md](SPEC.md) for the normative provider behavior and
+See [the provider specification](docs/SPEC.md) for the normative behavior and
 [THIRD_PARTY.md](THIRD_PARTY.md) for source and data provenance.
 
 This provider is GPL-3.0-or-later because it incorporates eSpeak NG. Keeping it

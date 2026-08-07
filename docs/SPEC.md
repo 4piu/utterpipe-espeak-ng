@@ -11,7 +11,8 @@ Initial provider version: `0.1.0`
 UtterPipe protocol majors: `1`
 
 This document is normative for this provider. It supplements the host-neutral
-UtterPipe Protocol v1 specification.
+[UtterPipe Protocol v1](https://github.com/4piu/utterpipe/blob/main/docs/SPEC.md)
+specification.
 
 ## 1. Purpose and identity
 
