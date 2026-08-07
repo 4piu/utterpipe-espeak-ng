@@ -7,8 +7,9 @@ they do not install `espeak-ng`, a language runtime, a model, or a voice pack.
 An UtterPipe host application supplies session options and handles playback.
 
 The provider emits complete 22.05 kHz mono PCM16 RIFF/WAVE audio. It exposes
-the upstream voice catalog and supports fixed per-session rate, pitch, and
-amplitude options.
+the embedded engine and voices through generic UtterPipe catalogs. Voice, rate,
+pitch, and amplitude are fixed provider options; rate, pitch, and amplitude may
+also be overridden for one utterance when the host grants permission.
 
 ## Install
 
@@ -96,20 +97,23 @@ schema_version = 1
 [tts]
 enabled = true
 backend = "utterpipe-espeak-ng"
-model_id = "espeak-ng"
-voice_id = "default"
 maximum_characters = 300
-provider_environment = []
+agent_utterance_options = ["rate_wpm", "pitch"]
 
 [tts.provider_options]
+voice = "default"
 rate_wpm = 175
 pitch = 50
 amplitude = 100
 ```
 
-`rate_wpm` accepts 80–450, `pitch` 0–100, and `amplitude` 0–200. Options are
-fixed for the provider session. Run `agent-speak voices --config
-config.toml` to inspect stable voice IDs such as `gmw/en`.
+`voice` defaults to `default`. `rate_wpm` accepts 80–450, `pitch` 0–100, and
+`amplitude` 0–200. The fixed values are session defaults. Agent Speak exposes
+only names in `agent_utterance_options`, validates each value against the
+provider's schema, and relays it for one request without changing later speech.
+Run `agent-speak provider catalog --config config.toml --catalog voices` to
+inspect stable voice IDs such as `gmw/en` and their ready-to-apply option
+patches.
 
 The reusable provider process owns the UtterPipe session. Each synthesis is
 performed by a short-lived worker invocation of the same executable, with text

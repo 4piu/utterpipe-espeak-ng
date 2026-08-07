@@ -79,11 +79,11 @@ async fn run() -> Result<(), String> {
             println!("slug: {PROVIDER_SLUG}");
             println!("vendor: {PROVIDER_VENDOR}");
             println!("version: {PROVIDER_VERSION}");
-            println!("protocol: utterpipe.tts v1");
+            println!("protocol: utterpipe.tts v2");
             println!("model: {MODEL_ID}");
             println!("engine: bundled eSpeak NG 1.53.0 (359f5f3)");
             println!("delivery: complete PCM16 WAV");
-            println!("capabilities: synthesis, cancellation, model catalog, voice catalog");
+            println!("capabilities: synthesis, cancellation, generic catalogs");
             Ok(())
         }
         Command::Doctor { cache_dir } => {
@@ -126,6 +126,7 @@ async fn run() -> Result<(), String> {
                 return Err("worker input is too large".to_owned());
             }
             let options = ProviderOptions {
+                voice: None,
                 rate_wpm,
                 pitch,
                 amplitude,

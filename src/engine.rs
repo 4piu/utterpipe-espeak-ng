@@ -38,7 +38,6 @@ pub struct Voice {
 #[derive(Clone)]
 pub struct Engine {
     bundle_root: PathBuf,
-    options: ProviderOptions,
     version: String,
     voices: Vec<Voice>,
 }
@@ -99,7 +98,6 @@ impl Engine {
         let voices = session.voices()?;
         Ok(Self {
             bundle_root,
-            options: options.clone(),
             version,
             voices,
         })
@@ -130,6 +128,7 @@ impl Engine {
         &self,
         voice_id: &str,
         text: &str,
+        options: &ProviderOptions,
         max_audio_bytes: usize,
         timeout: Duration,
         cancellation: &CancellationToken,
@@ -153,13 +152,13 @@ impl Engine {
             "--max-audio-bytes".to_owned(),
             max_audio_bytes.to_string(),
         ];
-        if let Some(value) = self.options.rate_wpm {
+        if let Some(value) = options.rate_wpm {
             arguments.extend(["--rate-wpm".to_owned(), value.to_string()]);
         }
-        if let Some(value) = self.options.pitch {
+        if let Some(value) = options.pitch {
             arguments.extend(["--pitch".to_owned(), value.to_string()]);
         }
-        if let Some(value) = self.options.amplitude {
+        if let Some(value) = options.amplitude {
             arguments.extend(["--amplitude".to_owned(), value.to_string()]);
         }
         let bytes = run_bounded(

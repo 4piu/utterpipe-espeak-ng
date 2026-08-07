@@ -61,10 +61,11 @@ impl ProviderProcess {
             "protocol.hello",
             json!({
                 "protocol": "utterpipe.tts",
-                "versions": [1],
+                "versions": [2],
                 "expected_provider": "espeak-ng",
                 "session": session,
-                "host": {"name": "integration-test", "version": "0.1.0"}
+                "utterance_schema_profiles": ["utterpipe.utterance-options/1"],
+                "host": {"name": "integration-test", "version": "0.2.0"}
             }),
         );
         self.response()
@@ -81,19 +82,33 @@ impl ProviderProcess {
             json!({
                 "data_dir": data_dir.to_string_lossy(),
                 "cache_dir": cache_dir.to_string_lossy(),
-                "options": {
+                "provider_options": {
+                    "voice": "default",
                     "rate_wpm": 180,
                     "pitch": 40,
                     "amplitude": 120
                 },
-                "selection": {"model_id": "espeak-ng", "voice_id": "default"},
                 "limits": {
                     "max_text_code_points": 4096,
                     "max_audio_bytes": 1_048_576,
                     "synthesis_timeout_ms": 5000
                 },
-                "accepted_delivery_modes": ["complete"],
-                "accepted_audio_formats": ["audio/wav;codec=pcm_s16le"]
+                "accepted_audio_deliveries": [
+                    {"mode":"complete", "format":"audio/wav;codec=pcm_s16le"}
+                ]
+            }),
+        );
+        self.response()
+    }
+
+    fn initialize_management(&mut self, temp: &TempDir) -> Value {
+        self.request(
+            "init",
+            "session.initialize",
+            json!({
+                "data_dir": temp.path().join("data").to_string_lossy(),
+                "cache_dir": temp.path().join("cache").to_string_lossy(),
+                "provider_options": {}
             }),
         );
         self.response()
@@ -134,15 +149,23 @@ fn complete_synthesis_normalizes_wav_and_reuses_runtime() {
     let mut provider = ProviderProcess::spawn();
     let hello = provider.hello("runtime");
     assert_eq!(hello["result"]["provider"]["slug"], "espeak-ng");
-    assert_eq!(hello["result"]["delivery_modes"], json!(["complete"]));
     assert_eq!(
-        hello["result"]["audio_formats"],
-        json!(["audio/wav;codec=pcm_s16le"])
+        hello["result"]["audio_deliveries"],
+        json!([{"mode":"complete", "format":"audio/wav;codec=pcm_s16le"}])
     );
     let initialized = provider.initialize(&temp);
-    assert_eq!(initialized["result"]["delivery_mode"], "complete");
+    assert_eq!(initialized["result"]["audio_delivery"]["mode"], "complete");
+    assert!(
+        initialized["result"]["utterance_options_schema_digest"]
+            .as_str()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
 
-    provider.request("synth", "synthesis.start", json!({"text": "Hello"}));
+    provider.request(
+        "synth",
+        "synthesis.start",
+        json!({"text": "Hello", "utterance_options":{"rate_wpm":220, "pitch":60}}),
+    );
     let terminal = provider.response();
     assert_eq!(terminal["result"]["audio"]["sample_rate_hz"], 22_050);
     assert_eq!(terminal["result"]["audio"]["channels"], 1);
@@ -183,38 +206,77 @@ fn active_synthesis_is_busy_and_cancellable() {
 }
 
 #[test]
+fn invalid_utterance_options_do_not_start_or_poison_synthesis() {
+    let temp = TempDir::new().unwrap();
+    let mut provider = ProviderProcess::spawn();
+    provider.hello("runtime");
+    provider.initialize(&temp);
+    provider.request(
+        "invalid",
+        "synthesis.start",
+        json!({"text":"do not synthesize", "utterance_options":{"rate_wpm":451}}),
+    );
+    assert_eq!(
+        provider.response()["error"]["code"],
+        "invalid_utterance_options"
+    );
+    provider.request("health", "runtime.health", json!({}));
+    assert_eq!(provider.response()["result"]["status"], "ready");
+    provider.shutdown();
+}
+
+#[test]
 fn management_catalogs_report_embedded_engine_and_voices() {
     let temp = TempDir::new().unwrap();
     let mut provider = ProviderProcess::spawn();
     let hello = provider.hello("management");
-    assert_eq!(hello["result"]["capabilities"]["model_catalog"], true);
-    assert_eq!(hello["result"]["capabilities"]["voice_catalog"], true);
-    provider.initialize(&temp);
+    assert!(
+        hello["result"]["capabilities"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("catalog"))
+    );
+    provider.initialize_management(&temp);
+    provider.request("validate", "provider.validate", json!({}));
+    assert_eq!(provider.response()["result"]["status"], "ready");
 
     provider.request(
         "models",
-        "catalog.models",
-        json!({"scope": "all", "refresh": false}),
+        "catalog.items",
+        json!({"catalog_id":"models", "scope": "all", "refresh": false, "limit":100}),
     );
     let models = provider.response();
-    assert_eq!(models["result"]["models"][0]["id"], "espeak-ng");
-    assert_eq!(models["result"]["models"][0]["status"], "embedded");
+    assert_eq!(models["result"]["items"][0]["id"], "espeak-ng");
+    assert_eq!(models["result"]["items"][0]["status"], "embedded");
 
     provider.request(
         "voices",
-        "catalog.voices",
-        json!({"model_id": "espeak-ng", "scope": "all", "refresh": false}),
+        "catalog.items",
+        json!({"catalog_id":"voices", "scope": "all", "refresh": false, "limit":1}),
     );
     let voices = provider.response();
-    assert_eq!(voices["result"]["voices"][0]["id"], "default");
+    assert_eq!(voices["result"]["items"][0]["id"], "default");
+    assert_eq!(
+        voices["result"]["items"][0]["provider_options_patch"]["voice"],
+        "default"
+    );
+    let cursor = voices["result"]["next_cursor"].as_str().unwrap();
+    provider.request(
+        "voices-next",
+        "catalog.items",
+        json!({
+            "catalog_id":"voices", "scope":"all", "refresh":false,
+            "limit":256, "cursor":cursor
+        }),
+    );
+    let voices = provider.response();
     assert!(
-        voices["result"]["voices"]
+        voices["result"]["items"]
             .as_array()
             .unwrap()
             .iter()
             .any(|voice| voice["id"] == "gmw/en")
     );
-    assert_eq!(voices["result"]["voices"][0]["kind"], "embedded");
     provider.shutdown();
 }
 
@@ -238,7 +300,8 @@ fn parallel_provider_instances_share_one_cache() {
             );
             barrier.wait();
             assert_eq!(
-                provider.initialize_paths(&data_dir, &cache_dir)["result"]["delivery_mode"],
+                provider.initialize_paths(&data_dir, &cache_dir)["result"]["audio_delivery"]
+                    ["mode"],
                 "complete"
             );
             provider.request(
