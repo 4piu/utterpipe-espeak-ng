@@ -4,6 +4,8 @@
 provider. It statically links the official eSpeak NG engine and embeds its
 language, voice, phoneme, and dictionary data. Users download one executable;
 they do not install `espeak-ng`, a language runtime, a model, or a voice pack.
+It is a generic building block for any compatible UtterPipe host; the Agent
+Speak configuration below is only one integration example.
 
 The provider emits complete 22.05 kHz mono PCM16 RIFF/WAVE audio. It exposes
 the upstream voice catalog and supports fixed per-session rate, pitch, and
