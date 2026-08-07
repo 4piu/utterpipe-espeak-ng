@@ -147,7 +147,7 @@ jobs:
           if-no-files-found: error
 
   source:
-    name: Corresponding source
+    name: Corresponding source and SBOM
     runs-on: ubuntu-latest
     steps:
       - name: Check out release tag and engine source
@@ -156,7 +156,9 @@ jobs:
           persist-credentials: false
           submodules: recursive
 
-      - name: Package initialized source tree
+      - uses: dtolnay/rust-toolchain@1.88.0
+
+      - name: Package initialized source tree and CycloneDX SBOM
         shell: bash
         run: |
           version="${GITHUB_REF_NAME}"
@@ -167,6 +169,19 @@ jobs:
             -czf "dist/$archive_name.tar.gz" .
           hash="$(sha256sum "dist/$archive_name.tar.gz" | awk '{print $1}')"
           printf '%s *%s\n' "$hash" "$archive_name.tar.gz" > "dist/$archive_name.tar.gz.sha256"
+
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          sbom="utterpipe-espeak-ng-$GITHUB_REF_NAME.sbom.cdx"
+          cargo cyclonedx --format json --all --target all \
+            --spec-version 1.5 --override-filename "$sbom"
+          jq '.components += [{
+            "type": "library",
+            "bom-ref": "pkg:github/espeak-ng/espeak-ng@359f5f397b85baf875089d3af9cda946bef31dcb",
+            "name": "espeak-ng",
+            "version": "1.53.0",
+            "licenses": [{"license": {"id": "GPL-3.0-or-later"}}],
+            "purl": "pkg:github/espeak-ng/espeak-ng@359f5f397b85baf875089d3af9cda946bef31dcb"
+          }]' "$sbom.json" > "dist/$sbom.json"
 
       - uses: actions/upload-artifact@v7
         with:
