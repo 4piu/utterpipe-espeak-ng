@@ -4,8 +4,7 @@
 provider. It statically links the official eSpeak NG engine and embeds its
 language, voice, phoneme, and dictionary data. Users download one executable;
 they do not install `espeak-ng`, a language runtime, a model, or a voice pack.
-It is a generic building block for any compatible UtterPipe host; the Agent
-Speak configuration below is only one integration example.
+An UtterPipe host application supplies session options and handles playback.
 
 The provider emits complete 22.05 kHz mono PCM16 RIFF/WAVE audio. It exposes
 the upstream voice catalog and supports fixed per-session rate, pitch, and
@@ -16,7 +15,8 @@ amplitude options.
 Download the archive and matching `.sha256` file for your platform from
 [GitHub Releases](https://github.com/4piu/utterpipe-espeak-ng/releases), verify
 the checksum, and place `utterpipe-espeak-ng` (`.exe` on Windows) beside the
-host application or on `PATH`. The executable contains the engine and its
+host application or on `PATH` when that host supports such discovery. Agent
+Speak checks both locations. The executable contains the engine and its
 standard data; no system eSpeak package is needed. The archive also carries
 the GPL license and source/provenance notices required for redistribution.
 
@@ -24,11 +24,19 @@ The repository also provides checksum-verifying per-user installation:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.sh | sh -s -- --uninstall
 ```
 
 ```powershell
 irm https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.ps1 | iex
+```
+
+Remove the executable while preserving its reconstructible cache with:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.sh | sh -s -- --uninstall
+```
+
+```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.ps1))) -Uninstall
 ```
 
@@ -77,10 +85,11 @@ Place the provider executable beside `agent-speak` or on `PATH`, then select it
 in `config.toml`:
 
 ```toml
+schema_version = 1
+
 [tts]
 enabled = true
-backend = "utterpipe"
-provider = "espeak-ng"
+backend = "utterpipe-espeak-ng"
 model_id = "espeak-ng"
 voice_id = "default"
 maximum_characters = 300
@@ -108,7 +117,8 @@ arguments or temporary files.
 - Embedded compiled data: eSpeak NG 1.52.0 plus the 1.52.0.1 language data set.
 - Included: standard eSpeak and Klatt/speechPlayer synthesis.
 - Excluded: MBROLA voices, external sound assets, libpcaudio playback, and
-  libsonic. Agent Speak remains responsible for playback and device routing.
+  libsonic. The UtterPipe host remains responsible for playback and device
+  routing.
 - Delivery: complete `audio/wav;codec=pcm_s16le`; no fake incremental mode.
 - Storage: `data_dir` is unused; only the reconstructible cache is written.
 
