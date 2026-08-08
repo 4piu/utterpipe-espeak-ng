@@ -6,7 +6,7 @@ use std::{
 use clap::{Parser, Subcommand};
 use utterpipe_espeak_ng::{
     MODEL_ID, PROVIDER_NAME, PROVIDER_SLUG, PROVIDER_VENDOR, PROVIDER_VERSION,
-    config::ProviderOptions,
+    config::{ProviderOptions, UtteranceOptions},
     engine::{Engine, run_worker},
     protocol,
 };
@@ -125,7 +125,7 @@ async fn run() -> Result<(), String> {
             if text.len() as u64 > MAX_WORKER_TEXT_BYTES {
                 return Err("worker input is too large".to_owned());
             }
-            let options = ProviderOptions {
+            let options = UtteranceOptions {
                 voice: None,
                 rate_wpm,
                 pitch,

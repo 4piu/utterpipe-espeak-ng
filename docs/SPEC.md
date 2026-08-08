@@ -44,7 +44,8 @@ incremental delivery.
 
 ## 3. Provider and utterance options
 
-The fixed provider schema is a closed object and accepts `{}`:
+The fixed provider schema is the closed empty object. The resolved
+`utterpipe.utterance-options/1` schema exposes:
 
 | Option | Type | Default | Range and meaning |
 | --- | --- | --- | --- |
@@ -54,39 +55,33 @@ The fixed provider schema is a closed object and accepts `{}`:
 | `amplitude` | integer | engine default 100 | eSpeak amplitude level 0–200 |
 
 Unknown members, explicit nulls, invalid voice text, and out-of-range controls
-return `invalid_provider_options`. `default` selects upstream English; other
+return `invalid_utterance_options`. `default` selects upstream English; other
 stable IDs come from the voices catalog, such as `gmw/en`.
 
-The resolved `utterpipe.utterance-options/1` schema exposes `rate_wpm`, `pitch`,
-and `amplitude` with the same domains and engine-specific explanations. All are
-optional. A present per-call value replaces the matching fixed value for that
-worker invocation only. Omission uses the fixed value or engine default. A
-request never changes later requests or persistent state. Invalid values are
-rejected before a worker starts with `invalid_utterance_options`.
-
-Voice is fixed for a runtime session because changing it requires a new engine
-selection and catalog-backed configuration decision.
+All are optional. A host may send configured defaults and authorized overrides
+together for one worker invocation. Omission uses the engine default, and a
+request never changes later requests or persistent state. Values are rejected
+before a worker starts when invalid or when a named embedded voice is absent.
 
 ## 4. Generic catalogs
 
 Hello declares two generic catalogs:
 
 - `models`, item kind `model`, with no patchable options;
-- `voices`, item kind `voice`, with patchable option `voice`.
+- `voices`, item kind `voice`, with patchable utterance option `voice`.
 
 `catalog.items` supports scopes `installed`, `available`, and `all`; embedded
 assets satisfy all three. `refresh` is local and has no side effect. `limit` is
 1–256 and `cursor` is an opaque provider cursor.
 
 The model catalog returns one `embedded` item with ID `espeak-ng`, the native
-engine version, distinct languages, an empty provider-options patch, and the
-GPL license.
+engine version, distinct languages, empty option patches, and the GPL license.
 
 Each voice item contains the stable upstream ID, name, primary language,
 embedded status, license, and this patch:
 
 ```json
-{"voice":"<catalog item ID>"}
+{"utterance_options_patch":{"voice":"<catalog item ID>"}}
 ```
 
 The provider advertises no prepare, remove, or import capability. Those method
@@ -94,15 +89,14 @@ families return `method_not_supported` because engine and voices are embedded.
 
 ## 5. Initialization, cache, and concurrency
 
-Runtime initialization validates fixed options, the exact WAV delivery offer,
-positive limits, distinct non-nested absolute roots, and availability of the
-configured voice. It returns the exact audio pair, resolved utterance schema,
-and JCS SHA-256 digest.
+Runtime initialization requires empty fixed options, validates the exact WAV
+delivery offer, positive limits, and distinct non-nested absolute roots. It
+returns the one-member audio delivery set, resolved utterance schema, and JCS
+SHA-256 digest.
 
-Management initialization accepts the same partial schema, materializes the
-engine cache, and permits catalog access even if a configured voice is absent.
-`provider.validate` then reports `unavailable` with remediation for that voice;
-otherwise it reports `ready`.
+Management initialization accepts the same empty schema, materializes the
+engine cache, and permits catalog access. `provider.validate` reports readiness
+of the embedded engine and cache.
 
 The provider never writes `data_dir`. On first initialization it atomically
 materializes embedded data under:
@@ -150,8 +144,8 @@ The process normally lives for the host session and has no idle timeout.
 
 | Condition | UtterPipe code |
 | --- | --- |
-| Invalid fixed option or unavailable configured voice | `invalid_provider_options` |
-| Invalid per-call control | `invalid_utterance_options` |
+| Nonempty fixed options | `invalid_provider_options` |
+| Invalid per-call control or unavailable voice | `invalid_utterance_options` |
 | Empty, NUL-containing, or oversized text | `invalid_text` |
 | Active synthesis | `busy` |
 | Deadline | `timeout` |

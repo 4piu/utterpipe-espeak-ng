@@ -21,7 +21,7 @@ use crate::{
     DEFAULT_VOICE_ID,
     audio::{WavMetadata, pcm16_mono_wav},
     bundle::{BundleError, ensure_bundled_data},
-    config::ProviderOptions,
+    config::{ProviderOptions, UtteranceOptions},
     ffi,
 };
 
@@ -128,7 +128,7 @@ impl Engine {
         &self,
         voice_id: &str,
         text: &str,
-        options: &ProviderOptions,
+        options: &UtteranceOptions,
         max_audio_bytes: usize,
         timeout: Duration,
         cancellation: &CancellationToken,
@@ -183,7 +183,7 @@ impl Engine {
 pub fn run_worker(
     bundle_root: &Path,
     voice_id: &str,
-    options: &ProviderOptions,
+    options: &UtteranceOptions,
     text: &str,
     max_audio_bytes: usize,
 ) -> Result<Vec<u8>, EngineError> {
@@ -305,7 +305,7 @@ impl NativeSession {
         }
     }
 
-    fn set_options(&mut self, options: &ProviderOptions) -> Result<(), EngineError> {
+    fn set_options(&mut self, options: &UtteranceOptions) -> Result<(), EngineError> {
         for (parameter, value) in [
             (ffi::PARAMETER_RATE, options.rate_wpm.map(i32::from)),
             (ffi::PARAMETER_PITCH, options.pitch.map(i32::from)),
@@ -556,7 +556,7 @@ mod tests {
         let output = run_worker(
             &engine.bundle_root,
             DEFAULT_VOICE_ID,
-            &ProviderOptions::default(),
+            &UtteranceOptions::default(),
             "Hello from the bundled engine.",
             4 * 1024 * 1024,
         )

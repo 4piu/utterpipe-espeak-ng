@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -49,8 +49,6 @@ pub enum ProtocolFailure {
 
 struct InitializedState {
     engine: Engine,
-    voice_id: String,
-    provider_options: ProviderOptions,
     max_text_code_points: usize,
     max_audio_bytes: usize,
     synthesis_timeout: Duration,
@@ -104,7 +102,7 @@ struct ManagementInitializeParams {
     provider_options: Map<String, Value>,
 }
 
-#[derive(Deserialize, Eq, PartialEq)]
+#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct AudioDelivery {
     mode: String,
@@ -123,6 +121,7 @@ struct RuntimeLimits {
 #[serde(deny_unknown_fields)]
 struct SynthesisParams {
     text: String,
+    audio_delivery: AudioDelivery,
     #[serde(default)]
     utterance_options: Map<String, Value>,
 }
@@ -307,10 +306,10 @@ pub async fn run_stdio() -> Result<(), ProtocolFailure> {
                                     &request.id,
                                     json!({
                                         "ready": true,
-                                        "audio_delivery": {
+                                        "audio_deliveries": [{
                                             "mode": "complete",
                                             "format": WAV_FORMAT
-                                        },
+                                        }],
                                         "utterance_options_schema": schema,
                                         "utterance_options_schema_digest": digest
                                     }),
@@ -390,6 +389,20 @@ pub async fn run_stdio() -> Result<(), ProtocolFailure> {
                                 continue;
                             }
                         };
+                        if params.audio_delivery.mode != "complete"
+                            || params.audio_delivery.format != WAV_FORMAT
+                        {
+                            write_error(
+                                &mut stdout,
+                                &request.id,
+                                &WireError::new(
+                                    "unsupported_audio_delivery",
+                                    "requested audio delivery is unavailable in this runtime",
+                                ),
+                            )
+                            .await?;
+                            continue;
+                        }
                         let Ok(utterance_options): Result<UtteranceOptions, _> =
                             serde_json::from_value(Value::Object(params.utterance_options.clone()))
                         else {
@@ -433,8 +446,20 @@ pub async fn run_stdio() -> Result<(), ProtocolFailure> {
                             continue;
                         }
                         let engine = state.engine.clone();
-                        let voice_id = state.voice_id.clone();
-                        let options = state.provider_options.with_utterance(&utterance_options);
+                        let voice_id = utterance_options.resolved_voice().to_owned();
+                        if !engine.has_voice(&voice_id) {
+                            write_error(
+                                &mut stdout,
+                                &request.id,
+                                &WireError::new(
+                                    "invalid_utterance_options",
+                                    "the requested eSpeak NG voice is unavailable",
+                                ),
+                            )
+                            .await?;
+                            continue;
+                        }
+                        let options = utterance_options;
                         let maximum = state.max_audio_bytes;
                         let timeout = state.synthesis_timeout;
                         let cancellation = CancellationToken::new();
@@ -478,23 +503,10 @@ pub async fn run_stdio() -> Result<(), ProtocolFailure> {
                         if let Err(error) = require_empty_params(&request.params) {
                             write_error(&mut stdout, &request.id, &error).await?;
                         } else {
-                            let (status, issues) = if state.engine.has_voice(&state.voice_id) {
-                                ("ready", Vec::new())
-                            } else {
-                                (
-                                    "unavailable",
-                                    vec![json!({
-                                        "severity":"error",
-                                        "code":"voice_unavailable",
-                                        "message":"The configured eSpeak NG voice is unavailable.",
-                                        "remediation":"Choose a voice from the voices catalog or omit the voice option."
-                                    })],
-                                )
-                            };
                             write_result(
                                 &mut stdout,
                                 &request.id,
-                                json!({"status": status, "issues": issues}),
+                                json!({"status": "ready", "issues": []}),
                             )
                             .await?;
                         }
@@ -619,14 +631,16 @@ fn handle_hello(params: &Map<String, Value>) -> Result<(SessionMode, Value), Wir
                     "name":"Models",
                     "description":"The embedded eSpeak NG synthesis engine.",
                     "item_kind":"model",
-                    "patchable_options":[]
+                    "patchable_provider_options":[],
+                    "patchable_utterance_options":[]
                 },
                 {
                     "id":"voices",
                     "name":"Voices",
                     "description":"Voices embedded with eSpeak NG.",
                     "item_kind":"voice",
-                    "patchable_options":["voice"]
+                    "patchable_provider_options":[],
+                    "patchable_utterance_options":["voice"]
                 }
             ],
             "import_kinds": []
@@ -650,9 +664,16 @@ async fn initialize_runtime(params: &Map<String, Value>) -> Result<InitializedSt
             "all negotiated limits must be positive protocol integers",
         ));
     }
-    if params.accepted_audio_deliveries.len() != 1
-        || params.accepted_audio_deliveries[0].mode != "complete"
-        || params.accepted_audio_deliveries[0].format != WAV_FORMAT
+    if params.accepted_audio_deliveries.is_empty()
+        || params
+            .accepted_audio_deliveries
+            .iter()
+            .enumerate()
+            .any(|(index, delivery)| {
+                delivery.mode != "complete"
+                    || delivery.format != WAV_FORMAT
+                    || params.accepted_audio_deliveries[..index].contains(delivery)
+            })
     {
         return Err(WireError::new(
             "invalid_message",
@@ -661,13 +682,6 @@ async fn initialize_runtime(params: &Map<String, Value>) -> Result<InitializedSt
     }
     let options = decode_provider_options(params.provider_options)?;
     let engine = initialize_engine(&params.cache_dir, &options).await?;
-    let voice_id = options.resolved_voice().to_owned();
-    if !engine.has_voice(&voice_id) {
-        return Err(WireError::new(
-            "invalid_provider_options",
-            "the configured eSpeak NG voice is unavailable",
-        ));
-    }
     let max_text_code_points = usize::try_from(
         params
             .limits
@@ -694,8 +708,6 @@ async fn initialize_runtime(params: &Map<String, Value>) -> Result<InitializedSt
     }
     Ok(InitializedState {
         engine,
-        voice_id,
-        provider_options: options,
         max_text_code_points,
         max_audio_bytes,
         synthesis_timeout,
@@ -708,9 +720,7 @@ async fn initialize_management(params: &Map<String, Value>) -> Result<Initialize
     let options = decode_provider_options(params.provider_options)?;
     let engine = initialize_engine(&params.cache_dir, &options).await?;
     Ok(InitializedState {
-        voice_id: options.resolved_voice().to_owned(),
         engine,
-        provider_options: options,
         max_text_code_points: 0,
         max_audio_bytes: 0,
         synthesis_timeout: Duration::ZERO,
@@ -824,6 +834,7 @@ fn model_items(state: &InitializedState) -> Vec<Value> {
         "status": "embedded",
         "languages": languages,
         "provider_options_patch": {},
+        "utterance_options_patch": {},
         "artifacts": [],
         "license": license_descriptor()
     })]
@@ -841,7 +852,8 @@ fn voice_items(state: &InitializedState) -> Vec<Value> {
                 "description": format!("Embedded {} eSpeak NG voice.", voice.gender),
                 "status": "embedded",
                 "languages": [voice.language],
-                "provider_options_patch": {"voice": voice.id},
+                "provider_options_patch": {},
+                "utterance_options_patch": {"voice": voice.id},
                 "artifacts": [],
                 "license": license_descriptor()
             })

@@ -82,12 +82,7 @@ impl ProviderProcess {
             json!({
                 "data_dir": data_dir.to_string_lossy(),
                 "cache_dir": cache_dir.to_string_lossy(),
-                "provider_options": {
-                    "voice": "default",
-                    "rate_wpm": 180,
-                    "pitch": 40,
-                    "amplitude": 120
-                },
+                "provider_options": {},
                 "limits": {
                     "max_text_code_points": 4096,
                     "max_audio_bytes": 1_048_576,
@@ -112,6 +107,22 @@ impl ProviderProcess {
             }),
         );
         self.response()
+    }
+
+    #[allow(clippy::needless_pass_by_value)]
+    fn start(&mut self, id: &str, text: Value, utterance_options: Value) {
+        self.request(
+            id,
+            "synthesis.start",
+            json!({
+                "text": text,
+                "audio_delivery": {
+                    "mode":"complete",
+                    "format":"audio/wav;codec=pcm_s16le"
+                },
+                "utterance_options": utterance_options
+            }),
+        );
     }
 
     fn shutdown(mut self) {
@@ -154,17 +165,20 @@ fn complete_synthesis_normalizes_wav_and_reuses_runtime() {
         json!([{"mode":"complete", "format":"audio/wav;codec=pcm_s16le"}])
     );
     let initialized = provider.initialize(&temp);
-    assert_eq!(initialized["result"]["audio_delivery"]["mode"], "complete");
+    assert_eq!(
+        initialized["result"]["audio_deliveries"],
+        json!([{"mode":"complete","format":"audio/wav;codec=pcm_s16le"}])
+    );
     assert!(
         initialized["result"]["utterance_options_schema_digest"]
             .as_str()
             .is_some_and(|digest| digest.starts_with("sha256:"))
     );
 
-    provider.request(
+    provider.start(
         "synth",
-        "synthesis.start",
-        json!({"text": "Hello", "utterance_options":{"rate_wpm":220, "pitch":60}}),
+        json!("Hello"),
+        json!({"voice":"default","rate_wpm":220,"pitch":60,"amplitude":120}),
     );
     let terminal = provider.response();
     assert_eq!(terminal["result"]["audio"]["sample_rate_hz"], 22_050);
@@ -192,12 +206,12 @@ fn active_synthesis_is_busy_and_cancellable() {
     let mut provider = ProviderProcess::spawn();
     provider.hello("runtime");
     provider.initialize(&temp);
-    provider.request(
+    provider.start(
         "synth",
-        "synthesis.start",
-        json!({"text": "A deliberately long cancellation test. ".repeat(100)}),
+        json!("A deliberately long cancellation test. ".repeat(100)),
+        json!({"voice":"default","rate_wpm":180}),
     );
-    provider.request("second", "synthesis.start", json!({"text": "second"}));
+    provider.start("second", json!("second"), json!({"voice":"default"}));
     assert_eq!(provider.response()["error"]["code"], "busy");
     provider.request("cancel", "synthesis.cancel", json!({"request_id": "synth"}));
     assert_eq!(provider.response()["result"]["accepted"], true);
@@ -211,10 +225,10 @@ fn invalid_utterance_options_do_not_start_or_poison_synthesis() {
     let mut provider = ProviderProcess::spawn();
     provider.hello("runtime");
     provider.initialize(&temp);
-    provider.request(
+    provider.start(
         "invalid",
-        "synthesis.start",
-        json!({"text":"do not synthesize", "utterance_options":{"rate_wpm":451}}),
+        json!("do not synthesize"),
+        json!({"voice":"default","rate_wpm":451}),
     );
     assert_eq!(
         provider.response()["error"]["code"],
@@ -257,7 +271,7 @@ fn management_catalogs_report_embedded_engine_and_voices() {
     let voices = provider.response();
     assert_eq!(voices["result"]["items"][0]["id"], "default");
     assert_eq!(
-        voices["result"]["items"][0]["provider_options_patch"]["voice"],
+        voices["result"]["items"][0]["utterance_options_patch"]["voice"],
         "default"
     );
     let cursor = voices["result"]["next_cursor"].as_str().unwrap();
@@ -300,14 +314,13 @@ fn parallel_provider_instances_share_one_cache() {
             );
             barrier.wait();
             assert_eq!(
-                provider.initialize_paths(&data_dir, &cache_dir)["result"]["audio_delivery"]
-                    ["mode"],
-                "complete"
+                provider.initialize_paths(&data_dir, &cache_dir)["result"]["audio_deliveries"],
+                json!([{"mode":"complete","format":"audio/wav;codec=pcm_s16le"}])
             );
-            provider.request(
+            provider.start(
                 "synth",
-                "synthesis.start",
-                json!({"text": format!("Parallel provider {index}")}),
+                json!(format!("Parallel provider {index}")),
+                json!({"voice":"default"}),
             );
             assert_eq!(
                 provider.response()["result"]["audio"]["sample_rate_hz"],

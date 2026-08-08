@@ -6,36 +6,13 @@ use crate::DEFAULT_VOICE_ID;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ProviderOptions {
-    #[serde(
-        default,
-        deserialize_with = "optional_non_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub voice: Option<String>,
-    #[serde(
-        default,
-        deserialize_with = "optional_non_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub rate_wpm: Option<u16>,
-    #[serde(
-        default,
-        deserialize_with = "optional_non_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub pitch: Option<u8>,
-    #[serde(
-        default,
-        deserialize_with = "optional_non_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub amplitude: Option<u8>,
-}
+pub struct ProviderOptions {}
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UtteranceOptions {
+    #[serde(default, deserialize_with = "optional_non_null")]
+    pub voice: Option<String>,
     #[serde(default, deserialize_with = "optional_non_null")]
     pub rate_wpm: Option<u16>,
     #[serde(default, deserialize_with = "optional_non_null")]
@@ -71,6 +48,17 @@ impl ProviderOptions {
     ///
     /// Returns [`ConfigError`] when an option is outside its supported range.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        Ok(())
+    }
+}
+
+impl UtteranceOptions {
+    /// Validate controls supplied for one synthesis request.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] when an option is outside its advertised schema.
+    pub fn validate(&self) -> Result<(), ConfigError> {
         if self.voice.as_ref().is_some_and(|voice| {
             !(1..=256).contains(&voice.chars().count()) || voice.chars().any(char::is_control)
         }) {
@@ -82,27 +70,6 @@ impl ProviderOptions {
     #[must_use]
     pub fn resolved_voice(&self) -> &str {
         self.voice.as_deref().unwrap_or(DEFAULT_VOICE_ID)
-    }
-
-    #[must_use]
-    pub fn with_utterance(&self, utterance: &UtteranceOptions) -> Self {
-        Self {
-            voice: self.voice.clone(),
-            rate_wpm: utterance.rate_wpm.or(self.rate_wpm),
-            pitch: utterance.pitch.or(self.pitch),
-            amplitude: utterance.amplitude.or(self.amplitude),
-        }
-    }
-}
-
-impl UtteranceOptions {
-    /// Validate controls supplied for one synthesis request.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ConfigError`] when an option is outside its advertised schema.
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        validate_controls(self.rate_wpm, self.pitch, self.amplitude)
     }
 }
 
@@ -129,16 +96,7 @@ pub fn provider_options_schema() -> Value {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "additionalProperties": false,
-        "properties": {
-            "voice": {
-                "type": "string", "minLength": 1, "maxLength": 256,
-                "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$",
-                "default": DEFAULT_VOICE_ID
-            },
-            "rate_wpm": {"type": "integer", "minimum": 80, "maximum": 450},
-            "pitch": {"type": "integer", "minimum": 0, "maximum": 100},
-            "amplitude": {"type": "integer", "minimum": 0, "maximum": 200}
-        }
+        "properties": {}
     })
 }
 
@@ -155,14 +113,24 @@ pub fn utterance_options_schema() -> Value {
         "additionalProperties": false,
         "maxProperties": 64,
         "properties": {
+            "voice": {
+                "type": "string", "minLength": 1, "maxLength": 256,
+                "title": "Voice",
+                "description": "Selects an embedded eSpeak NG voice for this utterance.",
+                "x-utterpipe": {
+                    "default_behavior": "Omission uses the provider's default English voice.",
+                    "use_when": "Use when another embedded language or voice should speak this utterance.",
+                    "omit_when": "Omit when the default English voice is suitable."
+                }
+            },
             "rate_wpm": {
                 "type": "integer", "minimum": 80, "maximum": 450,
                 "title": "Speaking rate",
                 "description": "Sets the eSpeak NG speaking rate in words per minute for this utterance.",
                 "x-utterpipe": {
-                    "default_behavior": "Omission uses the configured rate or the eSpeak NG default.",
+                    "default_behavior": "Omission uses the eSpeak NG default rate.",
                     "use_when": "Use when this utterance should be spoken faster or slower.",
-                    "omit_when": "Omit when the configured speaking rate is suitable.",
+                    "omit_when": "Omit when the default speaking rate is suitable.",
                     "unit": "words per minute"
                 }
             },
@@ -171,9 +139,9 @@ pub fn utterance_options_schema() -> Value {
                 "title": "Voice pitch",
                 "description": "Sets the eSpeak NG pitch level for this utterance.",
                 "x-utterpipe": {
-                    "default_behavior": "Omission uses the configured pitch or the eSpeak NG default.",
+                    "default_behavior": "Omission uses the eSpeak NG default pitch.",
                     "use_when": "Use when a higher or lower pitch helps convey the message.",
-                    "omit_when": "Omit when the configured pitch is suitable.",
+                    "omit_when": "Omit when the default pitch is suitable.",
                     "unit": "eSpeak NG pitch level"
                 }
             },
@@ -182,9 +150,9 @@ pub fn utterance_options_schema() -> Value {
                 "title": "Voice amplitude",
                 "description": "Sets the eSpeak NG synthesis amplitude for this utterance before host playback gain.",
                 "x-utterpipe": {
-                    "default_behavior": "Omission uses the configured amplitude or the eSpeak NG default.",
+                    "default_behavior": "Omission uses the eSpeak NG default amplitude.",
                     "use_when": "Use when the synthesized waveform should be quieter or louder.",
-                    "omit_when": "Omit when host playback gain and the configured amplitude are suitable.",
+                    "omit_when": "Omit when host playback gain and the default amplitude are suitable.",
                     "unit": "eSpeak NG amplitude level"
                 }
             }
@@ -199,8 +167,8 @@ mod tests {
     #[test]
     fn options_are_strict_and_null_is_rejected() {
         assert!(serde_json::from_value::<ProviderOptions>(json!({"unknown": 1})).is_err());
-        assert!(serde_json::from_value::<ProviderOptions>(json!({"voice": null})).is_err());
-        let options = ProviderOptions {
+        assert!(serde_json::from_value::<UtteranceOptions>(json!({"voice": null})).is_err());
+        let options = UtteranceOptions {
             voice: Some("gmw/en".into()),
             rate_wpm: Some(180),
             pitch: Some(40),
@@ -211,9 +179,10 @@ mod tests {
 
     #[test]
     fn option_bounds_are_enforced() {
-        let mut options = ProviderOptions {
+        let mut options = UtteranceOptions {
+            voice: None,
             rate_wpm: Some(79),
-            ..ProviderOptions::default()
+            ..UtteranceOptions::default()
         };
         assert!(matches!(options.validate(), Err(ConfigError::Rate)));
         options.rate_wpm = Some(450);
@@ -225,21 +194,19 @@ mod tests {
     }
 
     #[test]
-    fn request_controls_override_without_mutating_fixed_options() {
-        let fixed = ProviderOptions {
+    fn request_controls_and_voice_are_resolved_per_utterance() {
+        let options = UtteranceOptions {
             voice: Some("default".into()),
-            rate_wpm: Some(175),
-            pitch: Some(50),
-            amplitude: None,
-        };
-        let effective = fixed.with_utterance(&UtteranceOptions {
             rate_wpm: Some(220),
             pitch: None,
             amplitude: Some(90),
-        });
-        assert_eq!(effective.rate_wpm, Some(220));
-        assert_eq!(effective.pitch, Some(50));
-        assert_eq!(effective.amplitude, Some(90));
-        assert_eq!(fixed.rate_wpm, Some(175));
+        };
+        assert_eq!(options.resolved_voice(), "default");
+        assert_eq!(options.rate_wpm, Some(220));
+        assert_eq!(options.amplitude, Some(90));
+        assert_eq!(
+            UtteranceOptions::default().resolved_voice(),
+            DEFAULT_VOICE_ID
+        );
     }
 }
