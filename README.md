@@ -134,11 +134,13 @@ arguments or temporary files.
 - Delivery: complete `audio/wav;codec=pcm_s16le`; no fake incremental mode.
 - Storage: `data_dir` is unused; only the reconstructible cache is written.
 
-See [the provider specification](docs/SPEC.md) for the normative behavior and
-[THIRD_PARTY.md](THIRD_PARTY.md) for source and data provenance.
+See [the provider specification](docs/SPEC.md) for the normative behavior,
+[THIRD_PARTY.md](THIRD_PARTY.md) for source and data provenance, the generated
+[Rust dependency notices](THIRD_PARTY_LICENSES.html), and the exact
+[release-integrity status](docs/release-integrity.md).
 
 This provider is GPL-3.0-or-later because it incorporates eSpeak NG. Keeping it
 in a separate executable preserves license and release independence for
-UtterPipe hosts. The complete GPL text is available in
-[`vendor/espeak-ng/COPYING`](vendor/espeak-ng/COPYING) and must accompany every
-binary distribution.
+UtterPipe hosts. The complete GPL text is available in [`LICENSE`](LICENSE) and
+must accompany every binary distribution; the corresponding-source archive
+also carries the matching upstream copy.

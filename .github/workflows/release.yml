@@ -68,7 +68,8 @@ jobs:
           dist="$GITHUB_WORKSPACE/dist"
           mkdir -p "$package_root" "$dist"
           cp "target/$TARGET/release/utterpipe-espeak-ng" "$package_root/"
-          cp README.md THIRD_PARTY.md LICENSE install.sh install.ps1 "$package_root/"
+          cp README.md THIRD_PARTY.md THIRD_PARTY_LICENSES.html \
+            LICENSE install.sh install.ps1 "$package_root/"
           cp -R docs "$package_root/"
 
           archive="$dist/$ARCHIVE_NAME.tar.gz"
@@ -128,7 +129,8 @@ jobs:
           $dist = Join-Path $env:GITHUB_WORKSPACE "dist"
           New-Item -ItemType Directory -Force -Path $packageRoot, $dist | Out-Null
           Copy-Item "target/$env:TARGET/release/utterpipe-espeak-ng.exe" $packageRoot
-          Copy-Item "README.md", "THIRD_PARTY.md", "LICENSE", "install.sh", "install.ps1" $packageRoot
+          Copy-Item "README.md", "THIRD_PARTY.md", "THIRD_PARTY_LICENSES.html", `
+            "LICENSE", "install.sh", "install.ps1" $packageRoot
           Copy-Item "docs" $packageRoot -Recurse
 
           $archive = Join-Path $dist "$env:ARCHIVE_NAME.zip"
@@ -163,6 +165,31 @@ jobs:
       - name: Package initialized source tree and CycloneDX SBOM
         shell: bash
         run: |
+          cargo fetch --locked
+          cargo install cargo-about --version 0.9.1 --features cli --locked
+          cargo about generate --locked --offline --fail --all-features \
+            about.hbs --output-file "$RUNNER_TEMP/THIRD_PARTY_LICENSES.generated.html"
+          tr -d '\r' < "$RUNNER_TEMP/THIRD_PARTY_LICENSES.generated.html" \
+            > "$RUNNER_TEMP/THIRD_PARTY_LICENSES.normalized.html"
+          cmp THIRD_PARTY_LICENSES.html "$RUNNER_TEMP/THIRD_PARTY_LICENSES.normalized.html"
+
+          mkdir -p corresponding-source/espeak-ng-1.52.0 \
+            corresponding-source/data-crates
+          git -C vendor/espeak-ng fetch --depth=1 origin tag 1.52.0
+          test "$(git -C vendor/espeak-ng rev-parse '1.52.0^{commit}')" = \
+            4870adfa25b1a32b4361592f1be8a40337c58d6c
+          git -C vendor/espeak-ng archive 1.52.0 | \
+            tar -x -C corresponding-source/espeak-ng-1.52.0
+          for crate in espeak-ng-data-phonemes espeak-ng-data-dicts espeak-ng-data-dict-ru; do
+            crate_archive="$(find "$HOME/.cargo/registry/cache" -type f \
+              -name "$crate-0.1.0.crate" -print -quit)"
+            test -n "$crate_archive" || {
+              echo "corresponding source package for $crate is missing" >&2
+              exit 1
+            }
+            cp "$crate_archive" corresponding-source/data-crates/
+          done
+
           version="${GITHUB_REF_NAME}"
           archive_name="utterpipe-espeak-ng-$version-source"
           mkdir -p dist
