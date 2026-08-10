@@ -1,5 +1,7 @@
 #![allow(unsafe_code)]
 
+#[cfg(any(windows, test))]
+use std::borrow::Cow;
 use std::{
     collections::HashSet,
     ffi::{CStr, CString, c_int, c_void},
@@ -411,7 +413,37 @@ unsafe extern "C" fn capture_callback(
 
 fn path_cstring(path: &Path) -> Result<CString, EngineError> {
     let path = path.to_str().ok_or(EngineError::InvalidPath)?;
-    CString::new(path).map_err(|_| EngineError::InvalidPath)
+    #[cfg(windows)]
+    let path = windows_crt_path(path);
+    CString::new(path.as_bytes()).map_err(|_| EngineError::InvalidPath)
+}
+
+/// Convert Rust's canonical Windows path spelling to one accepted by eSpeak's
+/// narrow CRT file APIs.
+///
+/// `std::fs::canonicalize` returns verbatim paths on Windows. The bundled
+/// eSpeak version probes its data directory with `stat`, which does not handle
+/// a `\\?\C:\...` path once eSpeak appends `/espeak-ng-data`; it then mistakes
+/// the bundle root itself for the data directory. Conventional drive and UNC
+/// spellings preserve the same location while remaining compatible with that
+/// API. Other verbatim namespaces are left untouched rather than rewritten to
+/// a path with different semantics.
+#[cfg(any(windows, test))]
+fn windows_crt_path(path: &str) -> Cow<'_, str> {
+    if let Some(path) = path.strip_prefix(r"\\?\UNC\") {
+        return Cow::Owned(format!(r"\\{path}"));
+    }
+    if let Some(path) = path.strip_prefix(r"\\?\") {
+        let bytes = path.as_bytes();
+        if bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'\\' | b'/')
+        {
+            return Cow::Borrowed(path);
+        }
+    }
+    Cow::Borrowed(path)
 }
 
 fn c_string(pointer: *const i8, maximum: usize) -> Option<String> {
@@ -545,6 +577,34 @@ fn terminate(child: &mut Child) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_crt_path_converts_verbatim_drive_path() {
+        assert_eq!(
+            windows_crt_path(r"\\?\C:\cache\espeak").as_ref(),
+            r"C:\cache\espeak"
+        );
+    }
+
+    #[test]
+    fn windows_crt_path_converts_verbatim_unc_path() {
+        assert_eq!(
+            windows_crt_path(r"\\?\UNC\server\share\cache").as_ref(),
+            r"\\server\share\cache"
+        );
+    }
+
+    #[test]
+    fn windows_crt_path_preserves_other_path_kinds() {
+        assert_eq!(
+            windows_crt_path(r"C:\cache\espeak").as_ref(),
+            r"C:\cache\espeak"
+        );
+        assert_eq!(
+            windows_crt_path(r"\\?\Volume{1234}\cache").as_ref(),
+            r"\\?\Volume{1234}\cache"
+        );
+    }
 
     #[test]
     fn bundled_engine_lists_voices_and_synthesizes() {
