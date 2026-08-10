@@ -1,107 +1,52 @@
 # UtterPipe eSpeak NG provider
 
-`utterpipe-espeak-ng` is a self-contained, cross-platform UtterPipe TTS
-provider. It statically links the official eSpeak NG engine and embeds its
-language, voice, phoneme, and dictionary data. Users download one executable;
-they do not install `espeak-ng`, a language runtime, a model, or a voice pack.
-An UtterPipe host application supplies session options and handles playback.
+`utterpipe-espeak-ng` is an offline text-to-speech provider for UtterPipe hosts
+such as [Agent Speak](https://github.com/4piu/agent-speak). It produces complete
+22.05 kHz mono PCM16 WAV audio; the host handles playback and device routing.
 
-The provider emits complete 22.05 kHz mono PCM16 RIFF/WAVE audio. It exposes
-the embedded engine and voices through generic UtterPipe catalogs. Voice, rate,
-pitch, and amplitude are inexpensive per-utterance options, so one initialized
-provider can switch them without restarting.
+**One executable contains the eSpeak NG engine, 148 standard voices, languages,
+dictionaries, and phoneme data.** You do not need to install eSpeak NG, Python,
+a model, or a separate voice pack. MBROLA voices are not included.
 
-## Install
+## Install and verify
 
-Download the archive and matching `.sha256` file for your platform from
-[GitHub Releases](https://github.com/4piu/utterpipe-espeak-ng/releases), verify
-the checksum, and place `utterpipe-espeak-ng` (`.exe` on Windows) beside the
-host application or on `PATH` when that host supports such discovery. Agent
-Speak checks both locations. The executable contains the engine and its
-standard data; no system eSpeak package is needed. The archive also carries
-the GPL license and source/provenance notices required for redistribution.
-
-The repository also provides checksum-verifying per-user installation:
+macOS or Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.sh | sh
+# Open a new terminal if the installer says the directory is not on PATH.
+utterpipe-espeak-ng doctor
 ```
+
+Windows PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.ps1 | iex
+# Open a new PowerShell window after the installer adds its directory to PATH.
+utterpipe-espeak-ng doctor
 ```
 
-The same one-line command handles initial installation, reinstallation, and
-updates. Run it again to verify and replace the executable with the current
-latest release; the provider cache is left untouched. Stop running provider
-instances first, especially on Windows where an active executable may be
-locked.
+A successful check reports the bundled eSpeak NG version and voice count. If
+the shell cannot find the executable, follow the installer's instruction to add
+its directory to `PATH`, then open a new shell.
 
-Remove the executable while preserving its reconstructible cache with:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.sh | sh -s -- --uninstall
-```
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/4piu/utterpipe-espeak-ng/main/install.ps1))) -Uninstall
-```
-
-Add `--purge` or `-Purge` only when uninstalling to irreversibly remove the
-provider's reconstructible cache.
-
-## Build
-
-Rust 1.88+, CMake, and a C/C++ compiler are required to build from source.
-Initialize the pinned upstream source when cloning:
-
-```sh
-git clone --recurse-submodules https://github.com/4piu/utterpipe-espeak-ng.git
-cd utterpipe-espeak-ng
-cargo build --release --locked
-cargo test --locked --all-targets
-cargo clippy --locked --all-targets -- -D warnings
-```
-
-The release executable is `target/release/utterpipe-espeak-ng` (or `.exe` on
-Windows). Runtime use requires no compiler, CMake, shared eSpeak library, or
-system eSpeak data.
-
-## Commands
-
-```text
-utterpipe-espeak-ng info
-utterpipe-espeak-ng doctor [--cache-dir PATH]
-utterpipe-espeak-ng voices [--cache-dir PATH]
-utterpipe-espeak-ng protocol --stdio
-```
-
-`protocol --stdio` is the machine entry point. Standard output is reserved for
-UtterPipe frames; diagnostics use standard error.
-
-On first initialization, the provider atomically materializes its embedded
-read-only engine data below the host-provided `cache_dir`. This is a bounded,
-reconstructible cache, not configuration or a downloaded voice pack. Provider
-instances share it through an interprocess lock. The direct diagnostic commands
-default to a directory below the operating system's temporary directory when
-`--cache-dir` is omitted.
+The installer downloads the release for the current platform and verifies its
+published SHA-256 checksum. See [installation and maintenance](docs/installation.md)
+for manual verification, updates, uninstalling, supported platforms, and
+building from source.
 
 ## Agent Speak configuration
 
-Place the provider executable beside `agent-speak` or on `PATH`, then select it
-in `config.toml`:
+Agent Speak must be able to find `utterpipe-espeak-ng` beside its own executable
+or on its `PATH`. Then select this backend in a complete Agent Speak profile:
 
 ```toml
-schema_version = 1
-
-# Selects the provider and host-side synthesis policy.
 [tts]
 enabled = true
 backend = "utterpipe-espeak-ng"
 maximum_characters = 300
-agent_utterance_options = ["rate_wpm", "pitch"]
+agent_utterance_options = ["voice", "rate_wpm", "pitch"]
 
-# Sets per-request defaults that authorized agent values may override.
 [tts.utterance_options]
 voice = "default"
 rate_wpm = 175
@@ -109,38 +54,37 @@ pitch = 50
 amplitude = 100
 ```
 
-`voice` defaults to `default`. `rate_wpm` accepts 80–450, `pitch` 0–100, and
-`amplitude` 0–200. Agent Speak sends these configured defaults on each request, exposes
-only names in `agent_utterance_options`, validates each value against the
-provider's schema, and relays it for one request without changing later speech.
-Run `agent-speak provider catalog --config config.toml --catalog voices` to
-inspect stable voice IDs such as `gmw/en` and their ready-to-apply utterance
-option patches.
+This is a replacement for the profile's existing `[tts]` section, not a
+complete profile by itself. A ready-to-copy complete profile and VS Code steps
+are in [the Agent Speak setup guide](docs/agent-speak.md).
 
-The reusable provider process owns the UtterPipe session. Each synthesis is
-performed by a short-lived worker invocation of the same executable, with text
-sent over standard input. This preserves hard cancellation, timeouts, bounded
-output, and process isolation without exposing spoken text in command-line
-arguments or temporary files.
+Verify the integration before starting the MCP server:
 
-## Scope
+```sh
+agent-speak validate --config /path/to/agent-speak.toml
+agent-speak provider info --config /path/to/agent-speak.toml
+```
 
-- Engine: official eSpeak NG source pinned at commit `359f5f3` (1.53.0).
-- Embedded compiled data: eSpeak NG 1.52.0 plus the 1.52.0.1 language data set.
-- Included: standard eSpeak and Klatt/speechPlayer synthesis.
-- Excluded: MBROLA voices, external sound assets, libpcaudio playback, and
-  libsonic. The UtterPipe host remains responsible for playback and device
-  routing.
-- Delivery: complete `audio/wav;codec=pcm_s16le`; no fake incremental mode.
-- Storage: `data_dir` is unused; only the reconstructible cache is written.
+Start or restart Agent Speak in your MCP client, call `speak_text`, and confirm
+that audio plays. The provider itself does not open an audio device, so
+`utterpipe-espeak-ng doctor` verifies synthesis resources but does not speak.
 
-See [the provider specification](docs/SPEC.md) for the normative behavior,
-[THIRD_PARTY.md](THIRD_PARTY.md) for source and data provenance, the generated
-[Rust dependency notices](THIRD_PARTY_LICENSES.html), and the exact
-[release-integrity status](docs/release-integrity.md).
+## Voice and speech controls
 
-This provider is GPL-3.0-or-later because it incorporates eSpeak NG. Keeping it
-in a separate executable preserves license and release independence for
-UtterPipe hosts. The complete GPL text is available in [`LICENSE`](LICENSE) and
-must accompany every binary distribution; the corresponding-source archive
-also carries the matching upstream copy.
+`voice` defaults to `default`. Run `utterpipe-espeak-ng voices` or
+`agent-speak provider catalog --config /path/to/agent-speak.toml --catalog voices`
+to list stable IDs such as `gmw/en-US`. Per-request controls are `voice`,
+`rate_wpm` (80–450), `pitch` (0–100), and `amplitude` (0–200). Agent Speak
+exposes only controls named in `agent_utterance_options`.
+
+For the provider protocol, runtime storage behavior, engine scope, and exact
+option semantics, see [the provider specification](docs/SPEC.md).
+
+## License and provenance
+
+This provider is GPL-3.0-or-later because it incorporates eSpeak NG. Binary
+distributions must include [`LICENSE`](LICENSE),
+[source and data provenance](THIRD_PARTY.md), and the generated
+[Rust dependency notices](THIRD_PARTY_LICENSES.html). See the
+[release-integrity status](docs/release-integrity.md) for current signing and
+provenance details.
