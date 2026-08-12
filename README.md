@@ -1,4 +1,4 @@
-# UtterPipe eSpeak NG provider
+# UtterPipe eSpeak NG — bundled offline text-to-speech
 
 `utterpipe-espeak-ng` is an offline text-to-speech provider for UtterPipe hosts
 such as [Agent Speak](https://github.com/4piu/agent-speak). It produces complete
