@@ -30,7 +30,7 @@ tables with:
 ```toml
 [tts]
 enabled = true
-backend = "utterpipe-espeak-ng"
+provider = "utterpipe-espeak-ng"
 maximum_characters = 300
 agent_utterance_options = ["voice", "rate_wpm", "pitch"]
 

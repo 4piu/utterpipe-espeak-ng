@@ -38,12 +38,12 @@ building from source.
 ## Agent Speak configuration
 
 Agent Speak must be able to find `utterpipe-espeak-ng` beside its own executable
-or on its `PATH`. Then select this backend in a complete Agent Speak profile:
+or on its `PATH`. Then select this provider in a complete Agent Speak profile:
 
 ```toml
 [tts]
 enabled = true
-backend = "utterpipe-espeak-ng"
+provider = "utterpipe-espeak-ng"
 maximum_characters = 300
 agent_utterance_options = ["voice", "rate_wpm", "pitch"]
 
